@@ -4,15 +4,14 @@ import {
   getAllScenes,
   saveScene as storageSaveScene,
   deleteScene as storageDeleteScene,
-  getScenesByRoute,
+  updateSceneTags as storageUpdateSceneTags,
   getAllRouteNames,
-  getRandomScene,
 } from '@/services/storage'
+import { filterScenes, pickRandomScene } from '@/utils/tagFilter'
 
 interface SceneState {
   scenes: WindowScene[]
   routeNames: string[]
-  currentRouteScenes: WindowScene[]
   selectedRoute: string
   randomScene: WindowScene | null
 
@@ -20,13 +19,13 @@ interface SceneState {
   saveScene: (data: SceneFormData) => void
   deleteScene: (id: string) => void
   selectRoute: (routeName: string) => void
-  refreshRandom: () => void
+  setSceneTags: (sceneId: string, tagIds: string[]) => void
+  refreshRandom: (tagIds?: string[]) => void
 }
 
 export const useSceneStore = create<SceneState>((set) => ({
   scenes: [],
   routeNames: [],
-  currentRouteScenes: [],
   selectedRoute: '',
   randomScene: null,
 
@@ -43,33 +42,25 @@ export const useSceneStore = create<SceneState>((set) => ({
       timestamp: new Date().toISOString(),
     }
     storageSaveScene(scene)
-    const scenes = getAllScenes()
-    const routeNames = getAllRouteNames()
-    set((state) => {
-      const currentRouteScenes =
-        state.selectedRoute ? getScenesByRoute(state.selectedRoute) : []
-      return { scenes, routeNames, currentRouteScenes }
-    })
+    set({ scenes: getAllScenes(), routeNames: getAllRouteNames() })
   },
 
   deleteScene: (id: string) => {
     storageDeleteScene(id)
-    const scenes = getAllScenes()
-    const routeNames = getAllRouteNames()
-    set((state) => {
-      const currentRouteScenes =
-        state.selectedRoute ? getScenesByRoute(state.selectedRoute) : []
-      return { scenes, routeNames, currentRouteScenes }
-    })
+    set({ scenes: getAllScenes(), routeNames: getAllRouteNames() })
   },
 
   selectRoute: (routeName: string) => {
-    const currentRouteScenes = routeName ? getScenesByRoute(routeName) : []
-    set({ selectedRoute: routeName, currentRouteScenes })
+    set({ selectedRoute: routeName })
   },
 
-  refreshRandom: () => {
-    const randomScene = getRandomScene()
-    set({ randomScene })
+  setSceneTags: (sceneId: string, tagIds: string[]) => {
+    storageUpdateSceneTags(sceneId, tagIds)
+    set({ scenes: getAllScenes() })
+  },
+
+  refreshRandom: (tagIds?: string[]) => {
+    const pool = filterScenes(getAllScenes(), { tagIds })
+    set({ randomScene: pickRandomScene(pool) })
   },
 }))

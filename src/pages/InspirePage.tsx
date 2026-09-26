@@ -1,5 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useSceneStore } from '@/store/useSceneStore'
+import { useTagStore } from '@/store/useTagStore'
+import { getSceneTags } from '@/utils/tagFilter'
+import TagBadge from '@/components/TagBadge'
+import TagSelect from '@/components/TagSelect'
 import {
   WRITING_PROMPTS,
   getWeatherIcon,
@@ -12,14 +16,22 @@ import { Lightbulb, RefreshCw, Quote, Bus, ArrowRight } from 'lucide-react'
 
 export default function InspirePage() {
   const { randomScene, refreshRandom, loadAll, scenes } = useSceneStore()
+  const { tags, loadTags } = useTagStore()
   const [revealed, setRevealed] = useState(false)
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [displayedPrompt, setDisplayedPrompt] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [isSpinning, setIsSpinning] = useState(false)
 
   useEffect(() => {
     loadAll()
-  }, [loadAll])
+    loadTags()
+  }, [loadAll, loadTags])
+
+  // 标签被删除后，抽取范围里不再保留失效的 id
+  useEffect(() => {
+    setSelectedTagIds((prev) => prev.filter((id) => tags.some((t) => t.id === id)))
+  }, [tags])
 
   useEffect(() => {
     if (!revealed || !randomScene) return
@@ -42,20 +54,28 @@ export default function InspirePage() {
   }, [revealed, randomScene])
 
   const handlePick = useCallback(() => {
-    refreshRandom()
+    refreshRandom(selectedTagIds)
     setRevealed(true)
     setIsSpinning(false)
-  }, [refreshRandom])
+  }, [refreshRandom, selectedTagIds])
 
   const handleRefresh = useCallback(() => {
     setIsSpinning(true)
     setRevealed(false)
     setTimeout(() => {
-      refreshRandom()
+      refreshRandom(selectedTagIds)
       setRevealed(true)
       setIsSpinning(false)
     }, 400)
-  }, [refreshRandom])
+  }, [refreshRandom, selectedTagIds])
+
+  const handleToggleTag = (id: string) => {
+    const next = selectedTagIds.includes(id)
+      ? selectedTagIds.filter((t) => t !== id)
+      : [...selectedTagIds, id]
+    setSelectedTagIds(next)
+    if (revealed) refreshRandom(next)
+  }
 
   if (scenes.length === 0) {
     return (
@@ -69,6 +89,15 @@ export default function InspirePage() {
 
   return (
     <div className="min-h-screen bg-teal-950 flex flex-col items-center px-4 py-8">
+      {tags.length > 0 && (
+        <div className="w-full max-w-lg mb-4">
+          <p className="mb-2 text-center text-xs text-mist-500">
+            选择标签限定采集范围{selectedTagIds.length > 1 ? '（需同时包含所选标签）' : ''}
+          </p>
+          <TagSelect tags={tags} selectedIds={selectedTagIds} onToggle={handleToggleTag} />
+        </div>
+      )}
+
       {!revealed ? (
         <div className="flex-1 flex flex-col items-center justify-center">
           <button
@@ -82,7 +111,9 @@ export default function InspirePage() {
             <div className="absolute inset-3 rounded-full border border-dusk-400/20" />
             <Bus className="w-10 h-10 text-dusk-400 group-hover:scale-110 transition-transform duration-300" />
             <span className="text-mist-100 font-serif text-lg tracking-wide">采一段窗景</span>
-            <span className="text-dusk-400/60 text-xs">点击随机采集</span>
+            <span className="text-dusk-400/60 text-xs">
+              {selectedTagIds.length > 0 ? '从所选标签中随机采集' : '点击随机采集'}
+            </span>
           </button>
           <style>{`
             @keyframes float {
@@ -143,6 +174,9 @@ export default function InspirePage() {
                 <Bus className="w-3.5 h-3.5 text-dusk-400" />
                 {randomScene.seatDirection}侧
               </span>
+              {getSceneTags(randomScene, tags).map((tag) => (
+                <TagBadge key={tag.id} tag={tag} />
+              ))}
             </div>
           </div>
 
@@ -166,7 +200,21 @@ export default function InspirePage() {
             <span className="font-serif text-sm">再采一段</span>
           </button>
         </div>
-      ) : null}
+      ) : (
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center">
+          <p className="text-mist-300 font-serif">当前标签条件下没有可采的窗景</p>
+          <button
+            onClick={() => {
+              setSelectedTagIds([])
+              setRevealed(false)
+            }}
+            className="px-5 py-2.5 rounded-full bg-dusk-400/15 border border-dusk-400/30
+              hover:bg-dusk-400/25 transition-all duration-300 text-mist-100 font-serif text-sm"
+          >
+            清除标签条件
+          </button>
+        </div>
+      )}
     </div>
   )
 }

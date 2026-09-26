@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Bus, MapPin, Armchair, Clock, CloudSun, Signpost, TreePine, Users, FileText, Send } from 'lucide-react'
+import { Bus, MapPin, Armchair, Clock, CloudSun, Signpost, TreePine, Users, FileText, Send, Tags } from 'lucide-react'
 import { useSceneStore } from '@/store/useSceneStore'
+import { useTagStore } from '@/store/useTagStore'
+import TagSelect from '@/components/TagSelect'
+import TagManager from '@/components/TagManager'
 import { getWeatherIcon, getTreeIcon, getPedestrianIcon, formatTimestamp } from '@/utils/sceneHelpers'
 import type { SceneFormData, Weather, TreeDensity, PedestrianStatus, SeatDirection } from '@/types'
 
@@ -17,16 +20,27 @@ const initialForm: SceneFormData = {
   treeDensity: '适中',
   pedestrianStatus: '稀少',
   note: '',
+  tagIds: [],
 }
 
 export default function RecordPage() {
   const saveScene = useSceneStore((s) => s.saveScene)
   const loadAll = useSceneStore((s) => s.loadAll)
+  const { tags, loadTags } = useTagStore()
   const [form, setForm] = useState<SceneFormData>(initialForm)
   const [now, setNow] = useState(new Date())
   const [showSuccess, setShowSuccess] = useState(false)
+  const [showTagManager, setShowTagManager] = useState(false)
 
-  useEffect(() => { loadAll() }, [loadAll])
+  useEffect(() => { loadAll(); loadTags() }, [loadAll, loadTags])
+
+  // 标签被删除后，表单里不再保留失效的 id
+  useEffect(() => {
+    setForm((prev) => ({
+      ...prev,
+      tagIds: prev.tagIds.filter((id) => tags.some((t) => t.id === id)),
+    }))
+  }, [tags])
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000)
@@ -35,6 +49,14 @@ export default function RecordPage() {
 
   const update = <K extends keyof SceneFormData>(key: K, val: SceneFormData[K]) =>
     setForm((prev) => ({ ...prev, [key]: val }))
+
+  const toggleTag = (id: string) =>
+    setForm((prev) => ({
+      ...prev,
+      tagIds: prev.tagIds.includes(id)
+        ? prev.tagIds.filter((t) => t !== id)
+        : [...prev.tagIds, id],
+    }))
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -141,6 +163,26 @@ export default function RecordPage() {
           <textarea className="w-full bg-teal-850 text-mist-100 rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-dusk-400 resize-none h-24" value={form.note} onChange={(e) => update('note', e.target.value)} />
         </section>
 
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-dusk-400 font-serif text-lg flex items-center gap-2">
+              <Tags className="w-4 h-4" />标签
+            </h2>
+            <button
+              type="button"
+              onClick={() => setShowTagManager(true)}
+              className="text-mist-500 text-xs transition-colors hover:text-dusk-300"
+            >
+              管理标签
+            </button>
+          </div>
+          {tags.length > 0 ? (
+            <TagSelect tags={tags} selectedIds={form.tagIds} onToggle={toggleTag} />
+          ) : (
+            <p className="text-mist-500 text-xs">还没有标签，点右上角「管理标签」创建一个</p>
+          )}
+        </section>
+
         <div className="flex items-center gap-2 text-mist-400 text-xs">
           <Clock className="w-3 h-3" />
           <span>{formatTimestamp(now.toISOString())}</span>
@@ -151,6 +193,8 @@ export default function RecordPage() {
           <Send className="w-4 h-4" />保存记录
         </button>
       </form>
+
+      <TagManager open={showTagManager} onClose={() => setShowTagManager(false)} />
     </div>
   )
 }

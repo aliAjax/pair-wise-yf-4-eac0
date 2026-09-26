@@ -6,6 +6,12 @@ export type TreeDensity = '稀疏' | '适中' | '茂密'
 
 export type PedestrianStatus = '稀少' | '零星' | '密集'
 
+export interface SceneTag {
+  id: string
+  name: string
+  color: string
+}
+
 export interface WindowScene {
   id: string
   routeName: string
@@ -17,6 +23,8 @@ export interface WindowScene {
   treeDensity: TreeDensity
   pedestrianStatus: PedestrianStatus
   note: string
+  // 旧记录可能没有该字段，读取时按空数组处理
+  tagIds?: string[]
 }
 
 export interface SceneFormData {
@@ -28,4 +36,5 @@ export interface SceneFormData {
   treeDensity: TreeDensity
   pedestrianStatus: PedestrianStatus
   note: string
+  tagIds: string[]
 }

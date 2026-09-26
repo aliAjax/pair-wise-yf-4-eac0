@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Search, Route, X, Trash2, Clock, MapPin } from 'lucide-react'
+import { Search, Route, X, Trash2, Clock, MapPin, Tags } from 'lucide-react'
 import { useSceneStore } from '@/store/useSceneStore'
+import { useTagStore } from '@/store/useTagStore'
+import { filterScenes, getSceneTags } from '@/utils/tagFilter'
+import TagBadge from '@/components/TagBadge'
+import TagSelect from '@/components/TagSelect'
+import TagManager from '@/components/TagManager'
 import {
   formatTimestamp,
   getTimeOfDay,
@@ -11,20 +16,38 @@ import {
 import type { WindowScene } from '@/types'
 
 export default function TimelinePage() {
-  const { routeNames, selectedRoute, currentRouteScenes, selectRoute, loadAll, deleteScene } =
+  const { scenes, routeNames, selectedRoute, selectRoute, loadAll, deleteScene, setSceneTags } =
     useSceneStore()
+  const { tags, loadTags } = useTagStore()
   const [search, setSearch] = useState('')
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [detailScene, setDetailScene] = useState<WindowScene | null>(null)
+  const [showTagManager, setShowTagManager] = useState(false)
 
   useEffect(() => {
     loadAll()
-  }, [loadAll])
+    loadTags()
+  }, [loadAll, loadTags])
+
+  // 标签被删除后，筛选条件里不再保留失效的 id
+  useEffect(() => {
+    setSelectedTagIds((prev) => prev.filter((id) => tags.some((t) => t.id === id)))
+  }, [tags])
 
   const filteredRoutes = routeNames.filter((r) =>
     r.toLowerCase().includes(search.toLowerCase())
   )
 
-  const sorted = [...currentRouteScenes].sort(
+  const toggleTagFilter = (id: string) =>
+    setSelectedTagIds((prev) =>
+      prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]
+    )
+
+  const filtered = filterScenes(scenes, {
+    routeName: selectedRoute || undefined,
+    tagIds: selectedTagIds,
+  })
+  const sorted = [...filtered].sort(
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   )
 
@@ -33,12 +56,31 @@ export default function TimelinePage() {
     setDetailScene(null)
   }
 
+  const toggleDetailTag = (id: string) => {
+    if (!detailScene) return
+    const current = detailScene.tagIds ?? []
+    const next = current.includes(id)
+      ? current.filter((t) => t !== id)
+      : [...current, id]
+    setSceneTags(detailScene.id, next)
+    setDetailScene({ ...detailScene, tagIds: next })
+  }
+
   return (
     <div className="min-h-screen bg-teal-950 font-serif text-mist-100">
       <div className="mx-auto max-w-3xl px-4 py-8">
-        <h1 className="mb-6 text-3xl font-bold tracking-wide text-dusk-400">
-          窗景时间线
-        </h1>
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-3xl font-bold tracking-wide text-dusk-400">
+            窗景时间线
+          </h1>
+          <button
+            onClick={() => setShowTagManager(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-teal-800 bg-teal-900/60 px-3 py-1.5 text-xs text-mist-300 transition-colors hover:border-dusk-400/40 hover:text-dusk-300"
+          >
+            <Tags className="h-3.5 w-3.5" />
+            管理标签
+          </button>
+        </div>
 
         <div className="mb-6 space-y-3">
           <div className="relative">
@@ -77,13 +119,21 @@ export default function TimelinePage() {
               </button>
             ))}
           </div>
+          {tags.length > 0 && (
+            <div className="space-y-1.5">
+              <TagSelect tags={tags} selectedIds={selectedTagIds} onToggle={toggleTagFilter} />
+              {selectedTagIds.length > 1 && (
+                <p className="text-[11px] text-mist-500">只显示同时包含所选标签的窗景</p>
+              )}
+            </div>
+          )}
         </div>
 
         {sorted.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-mist-400">
             <div className="mb-4 text-6xl opacity-30">🪟</div>
             <p className="text-lg">
-              {selectedRoute ? '该路线暂无窗景记录' : '选择一条路线，开始浏览窗景'}
+              {scenes.length === 0 ? '还没有窗景记录' : '没有符合筛选条件的窗景'}
             </p>
           </div>
         ) : (
@@ -122,7 +172,7 @@ export default function TimelinePage() {
                         {scene.note}
                       </p>
                     )}
-                    <div className="mt-2 flex items-center gap-2">
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
                       {getTreeIcon(scene.treeDensity)}
                       {getPedestrianIcon(scene.pedestrianStatus)}
                       {scene.signText && (
@@ -130,6 +180,9 @@ export default function TimelinePage() {
                           {scene.signText}
                         </span>
                       )}
+                      {getSceneTags(scene, tags).map((tag) => (
+                        <TagBadge key={tag.id} tag={tag} size="sm" />
+                      ))}
                     </div>
                   </button>
                 </div>
@@ -189,6 +242,18 @@ export default function TimelinePage() {
                   {detailScene.note}
                 </div>
               )}
+              <div>
+                <p className="mb-1.5 text-xs text-mist-500">标签（点击为这条记录挂上或取下）</p>
+                {tags.length > 0 ? (
+                  <TagSelect
+                    tags={tags}
+                    selectedIds={detailScene.tagIds ?? []}
+                    onToggle={toggleDetailTag}
+                  />
+                ) : (
+                  <p className="text-xs text-mist-500">还没有标签，可先在「管理标签」中创建</p>
+                )}
+              </div>
             </div>
 
             <button
@@ -201,6 +266,8 @@ export default function TimelinePage() {
           </div>
         </div>
       )}
+
+      <TagManager open={showTagManager} onClose={() => setShowTagManager(false)} />
     </div>
   )
 }
