@@ -23,20 +23,22 @@ export function deleteScene(id: string): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(scenes))
 }
 
-export function getScenesByRoute(routeName: string): WindowScene[] {
-  return getAllScenes()
-    .filter((s) => s.routeName === routeName)
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+/** 标签被移除后，从所有记录上摘下该标签；记录本身保留 */
+export function removeTagFromScenes(tagId: string): void {
+  const scenes = getAllScenes()
+  let changed = false
+  const next = scenes.map((scene) => {
+    if (!scene.tagIds?.includes(tagId)) return scene
+    changed = true
+    return { ...scene, tagIds: scene.tagIds.filter((id) => id !== tagId) }
+  })
+  if (changed) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+  }
 }
 
 export function getAllRouteNames(): string[] {
   const scenes = getAllScenes()
   const routeSet = new Set(scenes.map((s) => s.routeName))
   return Array.from(routeSet).sort()
-}
-
-export function getRandomScene(): WindowScene | null {
-  const scenes = getAllScenes()
-  if (scenes.length === 0) return null
-  return scenes[Math.floor(Math.random() * scenes.length)]
 }

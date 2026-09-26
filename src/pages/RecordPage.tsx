@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Bus, MapPin, Armchair, Clock, CloudSun, Signpost, TreePine, Users, FileText, Send } from 'lucide-react'
+import { Bus, MapPin, Armchair, Clock, CloudSun, Signpost, TreePine, Users, FileText, Send, Tags } from 'lucide-react'
 import { useSceneStore } from '@/store/useSceneStore'
+import { useTagStore } from '@/store/useTagStore'
 import { getWeatherIcon, getTreeIcon, getPedestrianIcon, formatTimestamp } from '@/utils/sceneHelpers'
+import TagChip from '@/components/TagChip'
+import TagManagerModal from '@/components/TagManagerModal'
 import type { SceneFormData, Weather, TreeDensity, PedestrianStatus, SeatDirection } from '@/types'
 
 const WEATHERS: Weather[] = ['晴', '多云', '阴', '小雨', '大雨', '雪', '雾']
@@ -17,16 +20,19 @@ const initialForm: SceneFormData = {
   treeDensity: '适中',
   pedestrianStatus: '稀少',
   note: '',
+  tagIds: [],
 }
 
 export default function RecordPage() {
   const saveScene = useSceneStore((s) => s.saveScene)
   const loadAll = useSceneStore((s) => s.loadAll)
+  const { tags, loadTags } = useTagStore()
   const [form, setForm] = useState<SceneFormData>(initialForm)
   const [now, setNow] = useState(new Date())
   const [showSuccess, setShowSuccess] = useState(false)
+  const [showTagManager, setShowTagManager] = useState(false)
 
-  useEffect(() => { loadAll() }, [loadAll])
+  useEffect(() => { loadAll(); loadTags() }, [loadAll, loadTags])
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000)
@@ -35,6 +41,14 @@ export default function RecordPage() {
 
   const update = <K extends keyof SceneFormData>(key: K, val: SceneFormData[K]) =>
     setForm((prev) => ({ ...prev, [key]: val }))
+
+  const toggleFormTag = (tagId: string) =>
+    setForm((prev) => ({
+      ...prev,
+      tagIds: prev.tagIds.includes(tagId)
+        ? prev.tagIds.filter((id) => id !== tagId)
+        : [...prev.tagIds, tagId],
+    }))
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -141,6 +155,41 @@ export default function RecordPage() {
           <textarea className="w-full bg-teal-850 text-mist-100 rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-dusk-400 resize-none h-24" value={form.note} onChange={(e) => update('note', e.target.value)} />
         </section>
 
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-dusk-400 font-serif text-lg flex items-center gap-2">
+              <Tags className="w-4 h-4" />素材标签
+            </h2>
+            <button
+              type="button"
+              onClick={() => setShowTagManager(true)}
+              className="text-mist-500 text-xs hover:text-dusk-400 transition-colors"
+            >
+              管理标签
+            </button>
+          </div>
+          {tags.length === 0 ? (
+            <button
+              type="button"
+              onClick={() => setShowTagManager(true)}
+              className="w-full rounded-xl bg-teal-850 px-3 py-2.5 text-left text-mist-500 text-xs hover:text-mist-300 transition-colors"
+            >
+              还没有标签，点击创建「城市招牌」「人物气质」这样的分类
+            </button>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {tags.map((tag) => (
+                <TagChip
+                  key={tag.id}
+                  tag={tag}
+                  selected={form.tagIds.includes(tag.id)}
+                  onClick={() => toggleFormTag(tag.id)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+
         <div className="flex items-center gap-2 text-mist-400 text-xs">
           <Clock className="w-3 h-3" />
           <span>{formatTimestamp(now.toISOString())}</span>
@@ -151,6 +200,8 @@ export default function RecordPage() {
           <Send className="w-4 h-4" />保存记录
         </button>
       </form>
+
+      <TagManagerModal open={showTagManager} onClose={() => setShowTagManager(false)} />
     </div>
   )
 }

@@ -1,5 +1,7 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { useSceneStore } from '@/store/useSceneStore'
+import { useTagStore } from '@/store/useTagStore'
+import TagChip from '@/components/TagChip'
 import {
   WRITING_PROMPTS,
   getWeatherIcon,
@@ -8,18 +10,32 @@ import {
   formatTimestamp,
   getTimeOfDay,
 } from '@/utils/sceneHelpers'
-import { Lightbulb, RefreshCw, Quote, Bus, ArrowRight } from 'lucide-react'
+import { Lightbulb, RefreshCw, Quote, Bus, ArrowRight, Tags } from 'lucide-react'
 
 export default function InspirePage() {
   const { randomScene, refreshRandom, loadAll, scenes } = useSceneStore()
+  const { tags, loadTags } = useTagStore()
   const [revealed, setRevealed] = useState(false)
   const [displayedPrompt, setDisplayedPrompt] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [isSpinning, setIsSpinning] = useState(false)
+  const [pickedTagIds, setPickedTagIds] = useState<string[]>([])
 
   useEffect(() => {
     loadAll()
-  }, [loadAll])
+    loadTags()
+  }, [loadAll, loadTags])
+
+  // 标签被移除后，自动从限定条件里剔除
+  const existingTagIds = new Set(tags.map((t) => t.id))
+  const activeTagIds = pickedTagIds.filter((id) => existingTagIds.has(id))
+
+  const tagMap = new Map(tags.map((t) => [t.id, t]))
+  const sceneTags = randomScene
+    ? (randomScene.tagIds ?? [])
+        .map((id) => tagMap.get(id))
+        .filter((t): t is NonNullable<typeof t> => Boolean(t))
+    : []
 
   useEffect(() => {
     if (!revealed || !randomScene) return
@@ -41,21 +57,26 @@ export default function InspirePage() {
     return () => clearInterval(timer)
   }, [revealed, randomScene])
 
-  const handlePick = useCallback(() => {
-    refreshRandom()
+  const togglePickedTag = (tagId: string) =>
+    setPickedTagIds((prev) =>
+      prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]
+    )
+
+  const handlePick = () => {
+    refreshRandom(activeTagIds)
     setRevealed(true)
     setIsSpinning(false)
-  }, [refreshRandom])
+  }
 
-  const handleRefresh = useCallback(() => {
+  const handleRefresh = () => {
     setIsSpinning(true)
     setRevealed(false)
     setTimeout(() => {
-      refreshRandom()
+      refreshRandom(activeTagIds)
       setRevealed(true)
       setIsSpinning(false)
     }, 400)
-  }, [refreshRandom])
+  }
 
   if (scenes.length === 0) {
     return (
@@ -67,8 +88,38 @@ export default function InspirePage() {
     )
   }
 
+  const tagFilterBar = tags.length > 0 && (
+    <div className="w-full max-w-lg mb-6">
+      <p className="text-mist-500 text-xs mb-2 flex items-center gap-1.5">
+        <Tags className="w-3.5 h-3.5" />
+        限定标签：只从同时含有所选标签的窗景中抽取
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => setPickedTagIds([])}
+          className={`rounded-full px-3 py-1 text-xs transition-colors ${
+            activeTagIds.length === 0
+              ? 'bg-dusk-400 text-teal-950'
+              : 'bg-teal-900 text-mist-300 hover:bg-teal-800'
+          }`}
+        >
+          全部
+        </button>
+        {tags.map((tag) => (
+          <TagChip
+            key={tag.id}
+            tag={tag}
+            selected={activeTagIds.includes(tag.id)}
+            onClick={() => togglePickedTag(tag.id)}
+          />
+        ))}
+      </div>
+    </div>
+  )
+
   return (
     <div className="min-h-screen bg-teal-950 flex flex-col items-center px-4 py-8">
+      {tagFilterBar}
       {!revealed ? (
         <div className="flex-1 flex flex-col items-center justify-center">
           <button
@@ -82,7 +133,9 @@ export default function InspirePage() {
             <div className="absolute inset-3 rounded-full border border-dusk-400/20" />
             <Bus className="w-10 h-10 text-dusk-400 group-hover:scale-110 transition-transform duration-300" />
             <span className="text-mist-100 font-serif text-lg tracking-wide">采一段窗景</span>
-            <span className="text-dusk-400/60 text-xs">点击随机采集</span>
+            <span className="text-dusk-400/60 text-xs">
+              {activeTagIds.length > 0 ? `限定 ${activeTagIds.length} 个标签` : '点击随机采集'}
+            </span>
           </button>
           <style>{`
             @keyframes float {
@@ -143,6 +196,9 @@ export default function InspirePage() {
                 <Bus className="w-3.5 h-3.5 text-dusk-400" />
                 {randomScene.seatDirection}侧
               </span>
+              {sceneTags.map((tag) => (
+                <TagChip key={tag.id} tag={tag} />
+              ))}
             </div>
           </div>
 
@@ -166,7 +222,22 @@ export default function InspirePage() {
             <span className="font-serif text-sm">再采一段</span>
           </button>
         </div>
-      ) : null}
+      ) : (
+        <div className="flex-1 flex flex-col items-center justify-center text-center">
+          <Tags className="w-12 h-12 text-dusk-400/40 mb-4" />
+          <p className="text-mist-100 font-serif text-lg mb-2">所选标签下没有窗景</p>
+          <p className="text-mist-400 text-sm mb-6">
+            试试减少标签条件，或先去记录页给窗景挂上这些标签
+          </p>
+          <button
+            onClick={() => setPickedTagIds([])}
+            className="px-6 py-2.5 rounded-full bg-dusk-400/15 border border-dusk-400/30
+              hover:bg-dusk-400/25 transition-all duration-300 text-mist-100 font-serif text-sm"
+          >
+            清除标签条件
+          </button>
+        </div>
+      )}
     </div>
   )
 }

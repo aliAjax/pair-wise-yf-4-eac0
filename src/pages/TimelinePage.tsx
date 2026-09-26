@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Search, Route, X, Trash2, Clock, MapPin } from 'lucide-react'
+import { Search, Route, X, Trash2, Clock, MapPin, Tags } from 'lucide-react'
 import { useSceneStore } from '@/store/useSceneStore'
+import { useTagStore } from '@/store/useTagStore'
+import { filterScenes } from '@/utils/sceneFilter'
+import TagChip from '@/components/TagChip'
+import TagManagerModal from '@/components/TagManagerModal'
 import {
   formatTimestamp,
   getTimeOfDay,
@@ -8,37 +12,71 @@ import {
   getTreeIcon,
   getPedestrianIcon,
 } from '@/utils/sceneHelpers'
-import type { WindowScene } from '@/types'
+import type { WindowScene, SceneTag } from '@/types'
 
 export default function TimelinePage() {
-  const { routeNames, selectedRoute, currentRouteScenes, selectRoute, loadAll, deleteScene } =
-    useSceneStore()
+  const {
+    scenes,
+    routeNames,
+    selectedRoute,
+    selectedTagIds,
+    selectRoute,
+    toggleTagFilter,
+    clearTagFilters,
+    loadAll,
+    deleteScene,
+  } = useSceneStore()
+  const { tags, loadTags } = useTagStore()
   const [search, setSearch] = useState('')
   const [detailScene, setDetailScene] = useState<WindowScene | null>(null)
+  const [showTagManager, setShowTagManager] = useState(false)
 
   useEffect(() => {
     loadAll()
-  }, [loadAll])
+    loadTags()
+  }, [loadAll, loadTags])
 
   const filteredRoutes = routeNames.filter((r) =>
     r.toLowerCase().includes(search.toLowerCase())
   )
 
-  const sorted = [...currentRouteScenes].sort(
-    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-  )
+  const tagMap = new Map(tags.map((t) => [t.id, t]))
+  // 标签被移除后，自动从筛选条件里剔除
+  const activeTagIds = selectedTagIds.filter((id) => tagMap.has(id))
+  const hasFilter = Boolean(selectedRoute) || activeTagIds.length > 0
+
+  const getSceneTags = (scene: WindowScene): SceneTag[] =>
+    (scene.tagIds ?? [])
+      .map((id) => tagMap.get(id))
+      .filter((t): t is SceneTag => Boolean(t))
+
+  const sorted = filterScenes(scenes, {
+    routeName: selectedRoute,
+    tagIds: activeTagIds,
+  }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 
   const handleDelete = (id: string) => {
     deleteScene(id)
     setDetailScene(null)
   }
 
+  const detailTags = detailScene ? getSceneTags(detailScene) : []
+
   return (
     <div className="min-h-screen bg-teal-950 font-serif text-mist-100">
       <div className="mx-auto max-w-3xl px-4 py-8">
-        <h1 className="mb-6 text-3xl font-bold tracking-wide text-dusk-400">
-          窗景时间线
-        </h1>
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-3xl font-bold tracking-wide text-dusk-400">
+            窗景时间线
+          </h1>
+          <button
+            onClick={() => setShowTagManager(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-teal-800 bg-teal-900/60 px-3 py-1.5 text-xs text-mist-300 transition-colors hover:border-dusk-400/40 hover:text-dusk-300"
+          >
+            <Tags className="w-3.5 h-3.5" />
+            标签管理
+          </button>
+        </div>
 
         <div className="mb-6 space-y-3">
           <div className="relative">
@@ -77,63 +115,94 @@ export default function TimelinePage() {
               </button>
             ))}
           </div>
+          {tags.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Tags className="w-3.5 h-3.5 text-mist-500" />
+              {tags.map((tag) => (
+                <TagChip
+                  key={tag.id}
+                  tag={tag}
+                  selected={activeTagIds.includes(tag.id)}
+                  onClick={() => toggleTagFilter(tag.id)}
+                />
+              ))}
+              {activeTagIds.length > 0 && (
+                <button
+                  onClick={clearTagFilters}
+                  className="text-[10px] text-mist-500 transition-colors hover:text-mist-300"
+                >
+                  清除标签
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {sorted.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-mist-400">
             <div className="mb-4 text-6xl opacity-30">🪟</div>
             <p className="text-lg">
-              {selectedRoute ? '该路线暂无窗景记录' : '选择一条路线，开始浏览窗景'}
+              {hasFilter ? '没有符合全部条件的窗景' : '选择一条路线或标签，开始浏览窗景'}
             </p>
           </div>
         ) : (
           <div className="relative pl-8">
             <div className="absolute left-3 top-0 bottom-0 w-px bg-teal-800" />
             <div className="space-y-6">
-              {sorted.map((scene) => (
-                <div key={scene.id} className="relative flex gap-4">
-                  <div className="absolute -left-5 top-1 h-2.5 w-2.5 rounded-full bg-dusk-400 ring-4 ring-teal-950" />
-                  <div className="w-20 shrink-0 pt-0.5 text-right">
-                    <p className="text-xs text-dusk-400">
-                      {formatTimestamp(scene.timestamp)}
-                    </p>
-                    <p className="mt-0.5 text-[10px] text-mist-500">
-                      {getTimeOfDay(scene.timestamp)}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setDetailScene(scene)}
-                    className="group flex-1 rounded-xl border border-teal-800 bg-teal-900/50 p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-dusk-400/40 hover:shadow-lg hover:shadow-dusk-400/10"
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      {getWeatherIcon(scene.weather)}
-                      <span className="text-sm font-semibold text-mist-100">
-                        {scene.segment}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 mb-1.5 text-mist-400">
-                      <MapPin className="w-3 h-3" />
-                      <span className="text-xs">{scene.routeName}</span>
-                      <span className="mx-1 text-teal-700">·</span>
-                      <span className="text-xs">{scene.seatDirection}侧</span>
-                    </div>
-                    {scene.note && (
-                      <p className="text-xs text-mist-400 line-clamp-2">
-                        {scene.note}
+              {sorted.map((scene) => {
+                const sceneTags = getSceneTags(scene)
+                return (
+                  <div key={scene.id} className="relative flex gap-4">
+                    <div className="absolute -left-5 top-1 h-2.5 w-2.5 rounded-full bg-dusk-400 ring-4 ring-teal-950" />
+                    <div className="w-20 shrink-0 pt-0.5 text-right">
+                      <p className="text-xs text-dusk-400">
+                        {formatTimestamp(scene.timestamp)}
                       </p>
-                    )}
-                    <div className="mt-2 flex items-center gap-2">
-                      {getTreeIcon(scene.treeDensity)}
-                      {getPedestrianIcon(scene.pedestrianStatus)}
-                      {scene.signText && (
-                        <span className="rounded bg-teal-800/60 px-1.5 py-0.5 text-[10px] text-mist-300">
-                          {scene.signText}
-                        </span>
-                      )}
+                      <p className="mt-0.5 text-[10px] text-mist-500">
+                        {getTimeOfDay(scene.timestamp)}
+                      </p>
                     </div>
-                  </button>
-                </div>
-              ))}
+                    <button
+                      onClick={() => setDetailScene(scene)}
+                      className="group flex-1 rounded-xl border border-teal-800 bg-teal-900/50 p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-dusk-400/40 hover:shadow-lg hover:shadow-dusk-400/10"
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        {getWeatherIcon(scene.weather)}
+                        <span className="text-sm font-semibold text-mist-100">
+                          {scene.segment}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 mb-1.5 text-mist-400">
+                        <MapPin className="w-3 h-3" />
+                        <span className="text-xs">{scene.routeName}</span>
+                        <span className="mx-1 text-teal-700">·</span>
+                        <span className="text-xs">{scene.seatDirection}侧</span>
+                      </div>
+                      {scene.note && (
+                        <p className="text-xs text-mist-400 line-clamp-2">
+                          {scene.note}
+                        </p>
+                      )}
+                      <div className="mt-2 flex items-center gap-2">
+                        {getTreeIcon(scene.treeDensity)}
+                        {getPedestrianIcon(scene.pedestrianStatus)}
+                        {scene.signText && (
+                          <span className="rounded bg-teal-800/60 px-1.5 py-0.5 text-[10px] text-mist-300">
+                            {scene.signText}
+                          </span>
+                        )}
+                      </div>
+                      {sceneTags.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {sceneTags.map((tag) => (
+                            <TagChip key={tag.id} tag={tag} />
+                          ))}
+                        </div>
+                      )}
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}
@@ -189,6 +258,13 @@ export default function TimelinePage() {
                   {detailScene.note}
                 </div>
               )}
+              {detailTags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {detailTags.map((tag) => (
+                    <TagChip key={tag.id} tag={tag} />
+                  ))}
+                </div>
+              )}
             </div>
 
             <button
@@ -201,6 +277,8 @@ export default function TimelinePage() {
           </div>
         </div>
       )}
+
+      <TagManagerModal open={showTagManager} onClose={() => setShowTagManager(false)} />
     </div>
   )
 }
